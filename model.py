@@ -4,6 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import inspect
 
+from config import GPTConfig
+
 class Rotary(torch.nn.Module):
 
     def __init__(self, dim, base=10_000):
@@ -43,3 +45,61 @@ class Rotary(torch.nn.Module):
         y2 = x1 * (-sin) + x2 * cos
         return torch.cat([y1, y2], 3).type_as(x)
 
+
+class CausalSelfAttention(nn.Module):
+    def __init__(self, config: GPTConfig):
+        super().__init__()
+        self.config = config
+        assert config.n_embed % config.n_head == 0 # Ensure that the embedding size is evenly divisible by the number of attention heads
+        self.head_dim = config.n_embed // config.n_head
+        self.c_attn = nn.Linear(config.n_embed, 3 * config.n_embed, bias=config.bias)
+        self.c_proj = nn.Linear(config.n_embed, config.n_embed, bias=config.bias)
+        self.resid_dropout = nn.Dropout(config.dropout)
+
+        self.flash = hasattr(torch.nn.functional, "scaled_dot_product_attention")
+
+        if not self.flash:
+            print("Not using flash attention")
+            self.register_butter(
+                "bias",
+                torch.tril(torch.ones(config.block_size, config.block_size)).view(
+                    1, 1, config.block_size, config.block_size
+                ),
+            )
+
+        if config.use_rotary:
+            self.rotary = Rotary(self.head_dim)
+
+    def forward(self, x):
+        B, T, C = x.shape # (batch_size, seq_len, n_embed)
+        q, k, v = self.c_attn(x).split(self.config.n_embed, dim=2)
+        q = q.view(B, T, self.config.n_head, C // self.config.n_head).transpose(1, 2)
+        k = k.view(B, T, self.config.n_head, C // self.config.n_head).transpose(1, 2)
+        v = v.view(B, T, self.config.n_head, C // self.config.n_head).transpose(1, 2)
+
+        # Apply rotary embeddings if enabled
+        if self.config.use_rotary:
+            q, k = self.rotary(q, k)
+
+        if self.flash:
+            y = F.scaled_dot_product_attention(
+                q,
+                k,
+                v,
+                attn_mask=None,
+                dropout_p=self.config.dropout if self.training else 0,
+                is_causal=True
+            )
+        else:
+            attn_pattern = (q @ k.transpose(-2, -1)) * (1.0 / math.sqrt(k.shape[-1]))
+            attn_pattern = attn_pattern.masked_fill(
+                self.bias[:, :, :T, :T] == 0, float("-inf")
+            )
+            attn = F.softmax(attn_pattern, dim=-1)
+            y = attn @ v
+
+        y = y.transpose(1, 2).contiguous().view(B, T, C)
+
+        y = self.resid_dropout(self.c_proj(y))
+
+        return y
