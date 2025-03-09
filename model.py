@@ -103,3 +103,16 @@ class CausalSelfAttention(nn.Module):
         y = self.resid_dropout(self.c_proj(y))
 
         return y
+    
+class FeedForward(nn.Module):
+    def __inti__(self, config):
+        super().__init__()
+        hideen_dim = 4 * config.n_embed
+        hidden_dim = int(2 * hidden_dim / 3)
+        self.w1 = nn.Linear(config.n_embed, hideen_dim, bias=False)
+        self.w2 = nn.Linear(hidden_dim, config.n_embed, bias=False)
+        self.w3 = nn.Linear(config.n_embed, hideen_dim, bias=False)
+        self.dropout = nn.Dropout(config.dropout)
+
+        def forward(self, x):
+            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
