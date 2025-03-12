@@ -253,4 +253,32 @@ class GPT(nn.Module):
                 cutoff_indices = mask.int().argmax(dim=-1, keepdim=True)
 
                 top_p_mask = torch.zeros_like(logits, dtype=torch.bool)
+                for b in range(logits.size(0)):
+                    cut = cutoff_indices[b].item()
+                    kept_indices = sorted_indices[b, : cut + 1]
+                    top_p_mask[b, kept_indices] = True
+
+                logits[~top_p_mask] = float("-inf")
+
+            if top_k is not None:
+                v, _ = torch.topk(logits, min(top_k, logits.size(-1)))
+                logits[logits < v[:, [-1]]] = float("-inf")
+
+            if min_p is not None and min_p > 0.0:
+                logit_max = logits.max(dim=-1, keepdim=True).values
+                threshold = logit_max + torch.log(
+                    torch.tensor(min_p, device=logits.device, dtype=logits.dtype)
+                )
+                logits[logits < threshold] = float("-inf")
+
+            probs = F.softmax(logits, dim=-1)
+            idx_next = torch.multinomial(probs, num_samples=1)
+
+            if idx_next == 2:
+                break
+
+            idx = torch.cat([idx, idx_next], dim=-1)
+
+        return idx
+                
 
