@@ -89,3 +89,75 @@ tensor([[0.6829, 0.5901, 0.5207],
 ```
 
 The matrix has the same shape as the input matrix we see in the begining, but now it carries information of not the token itself, but also information of how other tokens affect it. The purpose of self attention is to get a weighted sum matrix like this.
+
+### Day 3 feed forward
+
+The FeedForward class is a crucial component of the transformer atchitecture, providing non-linearity and additional transformation to the output of the self-attention mechanism.
+
+w1 expands the input `n_embed` to `hidden_dim`
+
+w2 projects back to original embedding size, `hidden_dim` to `n_embed`
+
+w3 another transformation from `n_embed` to  `hidden_dim` to modulate activations
+
+Dropout is applied after the second transformation to prevent overfitting
+
+### Day 4 GRPO training
+
+I am kind of out of track. Today I tried GRPO fine tuning with Qwen-2.5-1.5B with `openai/gsm8k` dataset. This is for getting a hands-on experience of DeepSeek-R1's receipe and thanks `unsloth` for making this possible. The result is amazing, with a few very simple reward functions, after 1000 steps of fine-tuning, the model is able to generate answers with <reasoning></reasoning> and <answer></answer> tags.
+
+Sample before traning:
+
+```xml
+Janet pays $40/hour for 3 hours per week of clarinet lessons and $28/hour for 5 hours a week of piano lessons. How much more does she spend on piano lessons than clarinet lessons in a year? 
+Answer:
+1040 
+Response:
+To determine how much more Janet spends on piano lessons than clarinet lessons in a year, we need to calculate the weekly and annual costs for both lessons.
+
+For clarinet lessons:
+- She pays $40/hour for 3 hours per week, so her weekly cost is \(40 \times 3 = \$120\).
+- Assuming there are 52 weeks in a year, her annual cost for clarinet lessons is \(120 \times 52 = \$6,240\).
+
+For piano lessons:
+- She pays $28/hour for 5 hours per week, so her weekly cost is \(28 \times 5 = \$140\).
+- Again, assuming there are 52 weeks in a year, her annual cost for piano lessons is \(140 \times 52 = \$7,280\).
+
+Now, to find out how much more she spends on piano lessons than clarinet lessons in a year, we subtract the annual cost of clarinet lessons from the annual cost of piano lessons:
+- \(7,280 - 6,240 = \$1,040\).
+
+Therefore, Janet spends $1,040 more on piano lessons than on clarinet lessons in a year. 
+Extracted:
+To determine how much more Janet spends on piano lessons than clarinet lessons in a year, we need to calculate the weekly and annual costs for both lessons.
+
+For clarinet lessons:
+- She pays $40/hour for 3 hours per week, so her weekly cost is \(40 \times 3 = \$120\).
+- Assuming there are 52 weeks in a year, her annual cost for clarinet lessons is \(120 \times 52 = \$6,240\).
+
+For piano lessons:
+- She pays $28/hour for 5 hours per week, so her weekly cost is \(28 \times 5 = \$140\).
+- Again, assuming there are 52 weeks in a year, her annual cost for piano lessons is \(140 \times 52 = \$7,280\).
+
+Now, to find out how much more she spends on piano lessons than clarinet lessons in a year, we subtract the annual cost of clarinet lessons from the annual cost of piano lessons:
+- \(7,280 - 6,240 = \$1,040\).
+
+Therefore, Janet spends $1,040 more on piano lessons than on clarinet lessons in a year.
+```
+
+Sample after training:
+
+```xml
+John runs a telethon to raise money.  For the first 12 hours, he generates $5000 per hour.  The remaining 14 hours, he generates 20% more per hour.  How much total money does he make? 
+Answer:
+144000 
+Response:
+<reasoning>
+John generates money for the first 12 hours at $5000 per hour, which is a total of 12 * $5000 = $60,000. For the remaining 14 hours, he generates 20% more per hour, meaning he generates 120% of $5000, which is $5000 * 1.20 = $6000 per hour. Therefore, he generates a total of 14 * $6000 = $84,000 in the last 14 hours. Adding the money from the first 12 hours to the money from the last 14 hours, John makes a total of $60,000 + $84,000 = $144,000.
+</reasoning>
+<answer>
+144000
+</answer>
+ 
+Extracted:
+144000
+```
