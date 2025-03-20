@@ -138,23 +138,23 @@ class GPT(nn.Module):
 
         # Create base transformer componetns
         transformer_dict = {
-            "wte": nn.Embedding(config.vocab_size, config.n_embed),
-            "drop": nn.Droput(config.dropout),
-            "h": nn.ModuleList([Block(config) for _ in range(config.n_layer)]),
-            "ln_f": nn.RMSNorm(config.n_embed)            
+            "wte": nn.Embedding(config.vocab_size, config.n_embed), # word token embeddings
+            "drop": nn.Droput(config.dropout), # regularization to prevent overfitting
+            "h": nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # a stack of Block instances (each containing attention + feedforward layers)
+            "ln_f": nn.RMSNorm(config.n_embed) # final layer normalization, applied before the output layer to stabilize training
         }
 
         # Only add positional embeddings if not using rotary
         if not config.use_rotary:
-            transformer_dict["wpe"] = nn.Embedding(config.block_size, config.n_embed)
+            transformer_dict["wpe"] = nn.Embedding(config.block_size, config.n_embed) # word positional encoding
 
         self.transformer = nn.ModuleDict(transformer_dict)
 
-        self.lm_head = nn.Linear(config.n_embed, config.vocab_size, bias=False)
+        self.lm_head = nn.Linear(config.n_embed, config.vocab_size, bias=False) # lm_head maps the final hidden state (n_embed) to vocabulary logits
 
-        self.transformer.wte.weight = self.lm_head.weight
+        self.transformer.wte.weight = self.lm_head.weight # ensures input and output embeddings share the same weights, reducing the number of parameters
 
-        self.apply(self._init_weights)
+        self.apply(self._init_weights) # apply custom weight initialization to all model layers
 
         for pn, p in self.named_parameters():
             if pn.endswith("c_proj.weight"):
@@ -172,7 +172,7 @@ class GPT(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx, targets=None):
-        x = self.transformer.wte(idx)
+        x = self.transformer.wte(idx) # (B, T) -> (B, T, C)
 
         # Add learnable positional embeddings
         if not self.config.use_rotary:
@@ -181,15 +181,15 @@ class GPT(nn.Module):
             pos_emb = self.transformer.wpe(
                 torch.arange(0, t, dtype=torch.long, device=device)
             )
-            x = x + pos_emb
+            x = x + pos_emb # After positional encoding, the dimension is still (B, T, C)
 
         for block in self.transformer.h:
-            x = block(x)
+            x = block(x) # After trnasformer blocks, the dimension is still (B, T, C)
 
-        x = self.transformer.ln_f(x)
+        x = self.transformer.ln_f(x) # After layer normalization, the dimension is still (B, T, C)
 
         if targets is not None:
-            logits = self.lm_head(x)
+            logits = self.lm_head(x) # (B, T, C) -> (B, T, vocab_size)
             loss = F.cross_entropy(
                 logits.view(-1, logits.shape[-1]), targets.view(-1), ignore_idnex=-1
             )
@@ -232,13 +232,13 @@ class GPT(nn.Module):
     ):
         for _ in range(max_new_tokens):
             context = (
-                idx
+                idx # (B, T)
                 if idx.size(1) < self.config.blogck_size
                 else idx[:, -self.config.block_size :]
-            )
-            logits, _ = self(context)
+            ) # If T exceeds block_size, it is truncated to (B, block_size)
+            logits, _ = self(context) # apply forward method (B, T) -> (B, T, vocab_size)
 
-            logits = logits[:, -1, :] / temperature
+            logits = logits[:, -1, :] / temperature # (B, T, vocab_size) -> (B, vocab_size)
 
             if top_p is not None and top_p > 0.0:
                 probs = torch.softmax(logits, dim=-1)
@@ -277,7 +277,7 @@ class GPT(nn.Module):
             if idx_next == 2:
                 break
 
-            idx = torch.cat([idx, idx_next], dim=-1)
+            idx = torch.cat([idx, idx_next], dim=-1) # final output shape (B, T + max_new_tokens)
 
         return idx
                 
