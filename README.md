@@ -161,3 +161,14 @@ John generates money for the first 12 hours at $5000 per hour, which is a total 
 Extracted:
 144000
 ```
+
+Day 5 Recap LLM generation sampling
+
+The way LLM sampling works is, it picks next token based on weighted random sampling, not always picking the token with the highest probability.
+
+Why? Beaause greedy decoding (chossing the token with the highest probability) makes generation highly predictable and often repetitive.
+
+
+Let's say the input tokens are `I like`, transformer will process the tokens and generate a list of logits of vovabulary size and each indicates the probability of the corresponding token. For example the logits are [0.1, 0.2, 0.3, 0.4] (make sure they sum to 1), then the weighted random sampleing is performed by use `torch.multinomial()`, if you only pick one token, it's guaranteed that the last token will always be picked, the result is somewhat random but not completely random. If you pick multiple times, the distribution should align with its probability.
+
+This is how diversity is injested into LLM inference, and remember `LLM is not generating token with the highest probability`.
