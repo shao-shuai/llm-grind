@@ -21,7 +21,7 @@ class Rotary(torch.nn.Module):
         seq_len = q.shape[1] # q, k shape (batch, seq_len, n_heads, head_dim)
         if seq_len != self.seq_len_cached:
             self.inv_freq = 1.0 / (self.base ** (torch.arange(0, self.dim, 2, device=q.device)))
-            print("inf_freq shape is:", self.inv_freq.shape)
+            print("inv_freq shape is:", self.inv_freq.shape)
             self.seq_len_cached = seq_len
             t = torch.arange(seq_len, device=q.device).type_as(self.inv_freq)
             freqs = torch.outer(t, self.inv_freq)
@@ -60,7 +60,7 @@ class CausalSelfAttention(nn.Module):
 
         if not self.flash:
             print("Not using flash attention")
-            self.register_butter(
+            self.register_buffer(
                 "bias",
                 torch.tril(torch.ones(config.block_size, config.block_size)).view(
                     1, 1, config.block_size, config.block_size
@@ -105,17 +105,17 @@ class CausalSelfAttention(nn.Module):
         return y
     
 class FeedForward(nn.Module):
-    def __inti__(self, config):
+    def __init__(self, config):
         super().__init__()
-        hideen_dim = 4 * config.n_embed
+        hidden_dim = 4 * config.n_embed
         hidden_dim = int(2 * hidden_dim / 3)
-        self.w1 = nn.Linear(config.n_embed, hideen_dim, bias=False)
+        self.w1 = nn.Linear(config.n_embed, hidden_dim, bias=False)
         self.w2 = nn.Linear(hidden_dim, config.n_embed, bias=False)
-        self.w3 = nn.Linear(config.n_embed, hideen_dim, bias=False)
+        self.w3 = nn.Linear(config.n_embed, hidden_dim, bias=False)
         self.dropout = nn.Dropout(config.dropout)
 
-        def forward(self, x):
-            return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
+    def forward(self, x):
+        return self.dropout(self.w2(F.silu(self.w1(x)) * self.w3(x)))
         
 class Block(nn.Module):
     def __init__(self, config):
@@ -139,7 +139,7 @@ class GPT(nn.Module):
         # Create base transformer componetns
         transformer_dict = {
             "wte": nn.Embedding(config.vocab_size, config.n_embed), # word token embeddings
-            "drop": nn.Droput(config.dropout), # regularization to prevent overfitting
+            "drop": nn.Dropout(config.dropout), # regularization to prevent overfitting
             "h": nn.ModuleList([Block(config) for _ in range(config.n_layer)]), # a stack of Block instances (each containing attention + feedforward layers)
             "ln_f": nn.RMSNorm(config.n_embed) # final layer normalization, applied before the output layer to stabilize training
         }
@@ -162,7 +162,7 @@ class GPT(nn.Module):
                     p, mean=0.0, std=0.02 / math.sqrt(2 * config.n_layer)
                 )
 
-    def __init_weights(self, module):
+    def _init_weights(self, module):
         if isinstance(module, nn.Linear):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
             if module.bias is not None:
@@ -191,7 +191,7 @@ class GPT(nn.Module):
         if targets is not None:
             logits = self.lm_head(x) # (B, T, C) -> (B, T, vocab_size)
             loss = F.cross_entropy(
-                logits.view(-1, logits.shape[-1]), targets.view(-1), ignore_idnex=-1
+                logits.view(-1, logits.shape[-1]), targets.view(-1), ignore_index=-1
             )
         else:
             logits = self.lm_head(x[:, [-1], :])
@@ -200,7 +200,7 @@ class GPT(nn.Module):
         return logits, loss
     
     def configure_optimizers(self, weight_decay, learning_rate, betas, device_type):
-        param_dict = {pn: p for pn, p in self.named_buffers()}
+        param_dict = {pn: p for pn, p in self.named_parameters()}
         param_dict = {pn: p for pn, p in param_dict.items() if p.requires_grad}
 
         decay_params = [p for n, p in param_dict.items() if p.dim() >= 2]
@@ -216,7 +216,7 @@ class GPT(nn.Module):
             f"num decayed parameter tensors: {len(decay_params)}, with {num_decay_params:,} parameters"
         )
         print(f"num non-decayed parameter tensors: {len(nodecay_params)}, with {num_nodecay_params:,} parameters")
-        fused_available = "fused" in inspect.isgnature(torch.optim.AdamW).parameters
+        fused_available = "fused" in inspect.signature(torch.optim.AdamW).parameters
         use_fused = fused_available and device_type == "cuda"
         extra_args = dict(fused=True) if use_fused else dict()
         optimizer = torch.optim.AdamW(
@@ -233,7 +233,7 @@ class GPT(nn.Module):
         for _ in range(max_new_tokens):
             context = (
                 idx # (B, T)
-                if idx.size(1) < self.config.blogck_size
+                if idx.size(1) < self.config.block_size
                 else idx[:, -self.config.block_size :]
             ) # If T exceeds block_size, it is truncated to (B, block_size)
             logits, _ = self(context) # apply forward method (B, T) -> (B, T, vocab_size)
