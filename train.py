@@ -34,6 +34,8 @@ else:
     seed_offset = 0
     ddp_world_size = 1
 
+# Calculates how many tokens are processed per full training iteration (taking into account micro-batches, batch size, sequence length, and number of GPUs).
+
 tokens_per_iter = (
     train_config.gradient_accumulation_steps
     * train_config.batch_size
@@ -51,6 +53,7 @@ torch.backends.cudnn.allow_tf32 = True
 torch.set_float32_matmul_precision("high")
 ctx = torch.autocast(train_config.device, dtype=torch.bfloat16)
 
+# Create a dictionary of model hyperparameters
 model_args = dict(
     n_layer=GPTConfig.n_layer,
     n_head=GPTConfig.n_head,
